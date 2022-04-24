@@ -6,16 +6,7 @@ from hashlib import sha256
 from tkinter import *
 from audioplayer import AudioPlayer
 import socket
-import tkinter as tk
-from PIL import Image, ImageTk
-from tkinter import ttk
-from tkinter import filedialog
-from tkinter import messagebox
-import pickle
-from datetime import datetime
-import os
-import threading
-import struct
+
 
 from .networking import receive, send_message, send_command
 from .config import THEMES, DEFAULT_SERVER, DEFAULT_USERNAME, DEFAULT_THEME
