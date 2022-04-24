@@ -4,13 +4,26 @@ from threading import Thread
 from random import choice
 from hashlib import sha256
 from tkinter import *
-from playsound import playsound
+from audioplayer import AudioPlayer
+import socket
+import tkinter as tk
+from PIL import Image, ImageTk
+from tkinter import ttk
+from tkinter import filedialog
+from tkinter import messagebox
+import pickle
+from datetime import datetime
+import os
+import threading
+import struct
 
 from .networking import receive, send_message, send_command
 from .config import THEMES, DEFAULT_SERVER, DEFAULT_USERNAME, DEFAULT_THEME
 
+
 class Client:
     def __init__(self):
+
         self.JOIN_MESSAGES = ["just joined!", "has joined", "has entered the chat", "arrived!", "slid in!", "showed up!", "joined the party!"]
         self.LEAVE_MESSAGES = ["left the chat", "has left", "just left", "has exited", "flew away!"]
         self.DEFAULT_SERVER = DEFAULT_SERVER
@@ -18,6 +31,10 @@ class Client:
         self.system_message_indexes = []
         self.username = DEFAULT_USERNAME
         self.login_status = ""
+        self.notification_sound1 = AudioPlayer("resources/notif_sound1.mp3")
+        self.notification_sound2 = AudioPlayer("resources/notif_sound2.mp3")
+        self.notification_sound3 = AudioPlayer("resources/notif_sound3.mp3")
+        self.notification_sound4 = AudioPlayer("resources/notif_sound4.mp3")
 
         self.server_address = ["0.0.0.0", 8888]
 
@@ -26,37 +43,44 @@ class Client:
         self.init_socket()
         self.gui_mainloop()
 
+
+
+
+
+
+
+
+
     def logon_gui(self):
         self.logon_win = Tk()
         self.logon_win.title("PyChat4")
-        self.logon_win.geometry("190x290")
         self.logon_win.resizable(False, False)
         self.logon_win.tk_setPalette(background=self.theme["bg"], foreground=self.theme["fg"],
                activeBackground=self.theme["bg2"], activeForeground=self.theme["fg"])
         self.logon_win.protocol("WM_DELETE_WINDOW", exit)
 
         main_title = Label(text="PyChat4", font=("", 16))
-        main_title.pack()
-        Label().pack()
+        main_title.pack(pady=10)
         title = Label(text="Server", font=("", 12))
         title.pack()
         self.server_entry = Entry(background=self.theme["bg2"], justify="center", font=("", 12))
         self.server_entry.insert(END, self.DEFAULT_SERVER)
-        self.server_entry.pack()
+        self.server_entry.pack(padx=(4,4))
         self.server_entry.bind("<Return>", self.set_filled_in)
         title2 = Label(text="Username", font=("", 12))
         title2.pack()
         self.username_entry = Entry(background=self.theme["bg2"], justify="center", font=("", 12))
-        self.username_entry.pack()
+        self.username_entry.insert(END, self.username)
+        self.username_entry.pack(padx=(4,4))
         self.username_entry.bind("<Return>", self.set_filled_in)
         title3 = Label(text="Password", font=("", 12))
         title3.pack()
         self.password_entry = Entry(background=self.theme["bg2"], justify="center", show="*", font=("", 12))
-        self.password_entry.pack()
+        self.password_entry.pack(padx=(4,4))
         self.password_entry.bind("<Return>", self.set_filled_in)
-        Label().pack()
-        connect_button = Button(text="Join", command=lambda: self.set_server(self.server_entry.get(), self.username_entry.get(), self.password_entry.get()), background=self.theme["bg2"], font=("", 12))
-        connect_button.pack()
+        connect_button = Button(text="Join", command=lambda: self.set_server(self.server_entry.get(), self.username_entry.get(),
+                                self.password_entry.get()), background=self.theme["bg2"], font=("", 12))
+        connect_button.pack(pady=(10,10))
 
         self.logon_win.mainloop()
 
@@ -75,7 +99,6 @@ class Client:
     def init_main_gui(self):
         self.root = Tk()
         self.root.title("PyChat4")
-        self.root.geometry("900x500")
         self.root.resizable(False, False)
 
         self.root.tk_setPalette(background=self.theme["bg"], foreground=self.theme["fg"],
@@ -90,13 +113,13 @@ class Client:
         self.userlist.bind('<Double-1>', self.on_user_select)
 
         self.messagebox_var = StringVar()
-        self.messagebox = Entry(textvariable=self.messagebox_var, width=35, font=("", 12))
+        self.messagebox = Entry(textvariable=self.messagebox_var, width=30, font=("", 13))
         self.messagebox.bind("<Return>", self.send)
         self.messagebox.focus_set()
         self.messagebox.grid()
 
         self.send_message_button = Button(text="Send", font=("", 12), command=self.send, bg=self.theme["bg2"], width=13, height=1)
-        self.send_message_button.grid(pady=(1, 1))
+        self.send_message_button.grid(pady=(12, 16))
 
     def onselect(self, event):
         w = event.widget
@@ -172,18 +195,25 @@ class Client:
             "username": username
         })
 
-        self.insert_command_response("username", [f"Set username to {username}"])
-        self.username = username
-
     def request_online_users(self):
-        send_command(self.s,{
+        send_command(self.s, {
             "command": "online_users",
             "manual_call": True
         })
 
     def request_users(self):
         send_command(self.s,{
-            "command": "users"
+            "command": "users",
+            "manual_call": True
+        })
+
+
+
+    
+    def request_user_info(self, user):
+        send_command(self.s, {
+            "command": "user_info",
+            "username": user
         })
 
     def direct_message(self, args):
@@ -250,7 +280,8 @@ class Client:
                     "----------------------------------------------------------------------------------------",
                     "•User Commands:",
                     "/username <username>  -  Changes your username",
-                    "/users  -  Lists all users",
+                    "/users  -  Lists all users"
+                    "/userinfo <username>  -  Displays user information",
                     "/theme <theme name> -  Changes the UI color theme",
                     "/themes  -  Lists all available themes",
                     "/clear  -  Clears the chat",
@@ -272,6 +303,7 @@ class Client:
                 self.request_online_users()
             elif command == "users":
                 self.request_users()
+
             elif command == "theme":
                 if args and args in THEMES:
                     self.theme = THEMES[args]
@@ -301,6 +333,10 @@ class Client:
                     self.insert_command_response("login", ["Invalid arguments. Please use /login <username> <password>"])
 
                 self.login(args)
+            elif command in ["userinfo", "user_info", "user-info"]:
+                if not args:
+                    self.insert_command_response("userinfo", ["Invalid arguments. Please use /userinfo <user>"])
+                self.request_user_info(args)
             elif command in ["addrole", "add_role", "add-role"]:
                 self.addrole(args)
             elif command in ["delete_account", "delete-account", "deleteaccount"]:
@@ -344,9 +380,10 @@ class Client:
                     continue
 
                 if msg["command"] == "message":
-                    self.insert_message(f"{msg['author']['username']}: {msg['message']}")
-                    if msg['author']['username'] != self.username and f"@{self.username}" in msg["message"]:
-                        playsound("resources/notif_sound.mp3", block=False)
+                    self.insert_message(f"{msg['author']['username']}{' (bot)' if 'bot' in msg['author']['roles'] else ''}: {msg['message']}")
+                    if msg['author']['username'] != self.username and (f"@{self.username}" in msg["message"] or "@everyone" in msg["message"]):
+                        self.notification_sound2.play(block=False)
+
 
                 elif msg["command"] == "server_message":
                     self.insert_system_message(f"[SERVER] {msg['message']}")
@@ -354,26 +391,39 @@ class Client:
                 elif msg["command"] == "dm":
                     self.insert_message(f"[DM] {msg['author']['username']}: {msg['message']}")
                     if msg['author']['username'] != self.username:
-                        playsound("resources/notif_sound.mp3", block=False)
+                        self.notification_sound.play(block=False)
 
                 elif msg["command"] == "user_join":
                     self.insert_system_message(f"> {msg['user']} {choice(self.JOIN_MESSAGES)}")
+                    self.notification_sound3.play(block=False)
 
                 elif msg["command"] == "user_leave":
                     self.insert_system_message(f"< {msg['user']} {choice(self.LEAVE_MESSAGES)}")
+                    self.notification_sound4.play(block=False)
+
+
 
                 elif msg["command"] == "online_users":
                     if msg["manual_call"]:
-                        self.insert_command_response("users", [user["username"] for user in msg["users"]])
+                        users = []
+                        for user in msg["users"]:
+                            users.append(user["username"] + (' (bot)' if 'bot' in user['roles'] else '') + (' (admin)' if 'admin' in user['roles'] else ''))
+                        
+                        self.insert_command_response("users", users)
 
                     self.userlist.delete(0,END)
                     for user in msg["users"]:
-                        self.userlist.insert(END, f"{user['username']}{' (admin)' if 'admin' in user['roles'] else ''}")
+                        if "admin" not in user["roles"]:
+                            self.userlist.insert(END, user['username'] + (' (bot)' if 'bot' in user['roles'] else ''))
+                        else:
+                            self.userlist.insert(0, f"{user['username']}{' (bot)' if 'bot' in user['roles'] else ''} (admin)")
+                    
+                    self.online_users = msg["users"]
 
                 elif msg["command"] == "users":
                     msgs = []
                     for user in msg["users"]:
-                        msgs.append(f"{user['username']} [{'ONLINE' if user['online'] else 'OFFLINE'}]{' (admin)' if 'admin' in user['roles'] else ''}")
+                        msgs.append(f"{user['username']} [{'ONLINE' if user['online'] else 'OFFLINE'}]{' (bot)' if 'bot' in user['roles'] else ''}{' (admin)' if 'admin' in user['roles'] else ''}")
                     self.insert_command_response("users", msgs)
 
                 elif msg["command"] == "banned":
@@ -423,7 +473,7 @@ class Client:
                     elif msg["result"] == "success":
                         self.insert_command_response("delete_account", [f"Account deleted"])
                 
-                elif msg["command"] in ["ban_result", "ban_result"]:
+                elif msg["command"] == "ban_result":
                     if msg["result"] == "insufficient_perms":
                         self.insert_command_response("ban", ["Insufficient permissions - you need the admin role to use this command"])
                     elif msg["result"] == "invalid_user":
@@ -432,3 +482,19 @@ class Client:
                         self.insert_command_response("ban", ["Invalid user - user needs to be online for ip ban"])
                     elif msg["result"] == "success":
                         self.insert_command_response("ban", [f"Successfully ip banned the user"])
+
+                elif msg["command"] == "user_info_result":
+                    if msg["result"] == "success":
+                        user = msg['user']
+                        self.insert_command_response("userinfo", [f"Username: {user['username']}", f"Roles: {user['roles']}", f"Id: {user['id']}"])
+                    elif msg["result"] == "invalid_user":
+                        self.insert_command_response("userinfo", ["Invalid user"])
+                
+                elif msg["command"] == "set_username_result":
+                    if msg["result"] == "success":
+                        self.insert_command_response("set_username", ["Changed username"])
+                        self.username = msg["username"]
+                    elif msg["result"] == "invalid_username":
+                        self.insert_command_response("set_username", ["Invalid username - it is already taken or it has disallowed characters."])
+                    elif msg["result"] == "cooldown":
+                        self.insert_command_response("set_username", ["You are changing your username too quickly."])
